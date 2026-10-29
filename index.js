@@ -1,5 +1,5 @@
 /* Independent SillyTavern frontend extension. The official phone remains separate. */
-const VERSION='0.3.1',KEY='__ksElectricCompanion',FRAME='ks-electric-companion-frame';
+const VERSION='0.3.2',KEY='__ksElectricCompanion',FRAME='ks-electric-companion-frame';
 window[KEY]?.dispose?.();
 let disposed=false,frame=null,timer=null,last='正在等待酒馆助手…';
 // SillyTavern's extension switch is the only enable switch. Old local flags are
