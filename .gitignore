@@ -1,0 +1,6 @@
+data/
+config/
+_maintenance/
+*.log
+*.zip
+*.mjs

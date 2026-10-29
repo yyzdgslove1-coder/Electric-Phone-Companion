@@ -1,0 +1,12 @@
+{
+  "display_name": "电波增强包 · 银灰与联系人助手",
+  "loading_order": 150,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Kestrael & CatBird",
+  "version": "0.2.1",
+  "auto_update": false,
+  "minimum_client_version": "1.19.0"
+}

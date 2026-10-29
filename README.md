@@ -1,2 +1,9 @@
-# Electric-Phone-Companion
-电波手机独立增强扩展，开发版
+# Electric Phone Companion
+
+电波手机独立增强扩展。
+
+当前为开发版，整合验证尚未完成。
+
+适用：SillyTavern 1.19、酒馆助手 4.x、电波手机 1.3.53。
+
+角色名册、独立状态、图库与银灰主题在本扩展维护；原版电波手机继续保留。
