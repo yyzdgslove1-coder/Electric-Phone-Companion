@@ -6,7 +6,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "Kestrael & CatBird",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "auto_update": false,
   "minimum_client_version": "1.19.0"
 }
