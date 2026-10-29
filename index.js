@@ -1,5 +1,5 @@
 /* Independent SillyTavern frontend extension. The official phone remains separate. */
-const VERSION='0.3.0',KEY='__ksElectricCompanion',FRAME='ks-electric-companion-frame';
+const VERSION='0.3.1',KEY='__ksElectricCompanion',FRAME='ks-electric-companion-frame';
 window[KEY]?.dispose?.();
 let disposed=false,frame=null,timer=null,last='正在等待酒馆助手…';
 // SillyTavern's extension switch is the only enable switch. Old local flags are
@@ -21,7 +21,7 @@ function start(){
   const nativeVersion=document.getElementById('wave-phone-extension-settings')?.textContent?.match(/扩展版本\s*v([\d.]+)/)?.[1];
   if(!nativeVersion){setStatus('正在等待原电波扩展，请确认它已安装并启用。');timer=setTimeout(start,500);return;}
   if(nativeVersion!=='1.3.53'){setStatus('检测到原电波 '+nativeVersion+'；本增强包尚未验证此版本，已保持待机，原电波可继续使用。');return;}
-  frame=document.createElement('iframe');frame.id=FRAME;frame.hidden=true;frame.setAttribute('aria-hidden','true');frame.src=new URL('frame.html',import.meta.url).href;
+  frame=document.createElement('iframe');frame.id=FRAME;frame.hidden=true;frame.setAttribute('aria-hidden','true');const frameUrl=new URL('frame.html',import.meta.url);frameUrl.searchParams.set('v',VERSION);frame.src=frameUrl.href;
   frame.addEventListener('error',()=>setStatus('增强界面加载失败，请检查安装包是否完整。'));
   document.body.append(frame);setStatus('正在连接原电波手机…');
 }
