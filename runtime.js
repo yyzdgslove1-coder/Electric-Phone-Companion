@@ -1068,7 +1068,8 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
  * edits replace their baseline exactly. People/fixed profiles/IDs are shared;
  * chatStates[cardKey][chatKey] holds that chat's states and generation receipts.
  * Legacy unscoped cards[].states/receipts remain archived there and are never
- * attached to a chat without evidence. No native status snapshot is overwritten.
+ * attached to a chat without evidence. The native adapter displays committed
+ * per-chat states through the original phone's status snapshots and pages.
  */
 (function (scope, factory) {
     'use strict';
@@ -1080,6 +1081,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
     'use strict';
     const KEY = 'ks_electric_rosters_v1';
     const TAG = /<ks_roster_delta\b[^>]*>([\s\S]*?)<\/ks_roster_delta>/gi;
+    const WAVE_TAG = /<wave_phone_delta\b[^>]*>([\s\S]*?)<\/wave_phone_delta>/gi;
     const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
     const object = value => value && typeof value === 'object' && !Array.isArray(value);
     const clone = value => JSON.parse(JSON.stringify(value));
@@ -1381,7 +1383,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
                     }
                 }
                 for (const id of value.friends) if (!own(bindings, id)) value = D.setFriend(value, id, false);
-                return value;
+                return waveStatuses(value, bindings, assistantRows(), true);
             });
             check(token);
             if (syncError) publish({ stage: 'error', notice: '名册已同步原联系人修改；原手机资料合并失败：' + syncError });
@@ -1499,10 +1501,32 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
             return value;
         }
         function narrative(message) {
-            return String(message || '').replace(TAG, '').replace(/<details>\s*<summary>人物状态更新<\/summary>[\s\S]*?<\/details>/gi, '')
+            return String(message || '').replace(TAG, '').replace(WAVE_TAG, '').replace(/<details>\s*<summary>人物状态更新<\/summary>[\s\S]*?<\/details>/gi, '')
                 .replace(/<electric\b[^>]*>[\s\S]*?<\/electric>/gi, '').trim();
         }
         function assistantRows() { return helper().getChatMessages('0-{{lastMessageId}}').filter(row => row.role === 'assistant'); }
+        function waveStatuses(value, bindings, messages, keepManual) {
+            let updated = 0;
+            for (const message of messages) for (const match of String(message.message || '').matchAll(WAVE_TAG)) {
+                const receipt = 'wave-status:' + message.message_id + ':' + hash(match[1]);
+                if (value.appliedGenerations.statuses.includes(receipt)) continue;
+                const delta = JSON.parse(match[1]), raw = delta.app_updates?.status;
+                if (delta.version !== 1 || !object(raw)) continue;
+                const person = value.people.find(person => person.id === delta.char_id || bindings[person.id] === delta.char_id)
+                    || personIn(value, { name: delta.char_name, aliases: [] });
+                if (!person?.trackStatus || (keepManual && value.states[person.id]?.source === 'manual')) continue;
+                const payload = {};
+                if (own(raw, 'fav')) payload.affection = { value: raw.fav, delta: raw.fav_delta ?? null, reason: raw.fav_reason ?? '' };
+                if (own(raw, 'soc')) payload.desire = { value: raw.soc, delta: raw.soc_delta ?? null, reason: raw.soc_reason ?? '' };
+                if (own(raw, 'mood')) payload.mood = raw.mood;
+                if (own(raw, 'hidden_thought')) payload.thought = raw.hidden_thought;
+                if (object(raw.organs)) payload.body = Object.entries(raw.organs).map(([name, text]) => ({ name, text }));
+                const previousOrder = value.states[person.id]?.updateOrder;
+                value = D.applyStatuses(value, [{ personId: person.id, payload }], { generationId: receipt });
+                if (value.states[person.id]?.updateOrder !== previousOrder) updated++;
+            }
+            return { snapshot: value, result: updated };
+        }
         function latestStory() {
             const rows = assistantRows();
             for (let i = rows.length - 1; i >= 0; i--) {
@@ -1813,19 +1837,25 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
         }
         async function afterGeneration(messageId) {
             const pending = follow; follow = null; clearInjection();
+            if (disposed || active) return;
+            const row = helper().getChatMessages(typeof messageId === 'number' ? messageId : -1)[0];
+            if (!row || row.role !== 'assistant' || typeof row.message !== 'string') return;
+            let waveUpdated = 0;
+            if ([...row.message.matchAll(WAVE_TAG)].length) {
+                try { waveUpdated = await mutate(current(), (value, bindings) => waveStatuses(value, bindings, [row], false)); }
+                catch (error) { publish({ notice: '正文状态未同步：' + String(error.message || error) }); return; }
+            }
             if (!pending || disposed || active || !getOptions().autoRoster || pending.token.p.settings?.generation?.followEnabled === false || !same(pending.token)) return;
             try {
-                const row = helper().getChatMessages(typeof messageId === 'number' ? messageId : -1)[0];
-                if (!row || row.role !== 'assistant' || typeof row.message !== 'string') return;
                 const matches = [...row.message.matchAll(TAG)];
-                if (!matches.length) { publish({ notice: '本轮正文没有输出人物状态数据，名册与状态保持原值' }); return; }
+                if (!matches.length) { publish({ notice: waveUpdated ? '本轮原版正文状态已同步：' + waveUpdated + '位' : '本轮正文没有新增人物状态数据' }); return; }
                 if (matches.length !== 1) throw Error('正文包含多份人物数据，请先整理为一份');
                 const output = parse(matches[0][1]);
                 const data = snapshot();
                 if (typeof output.receipt === 'string' && data.appliedGenerations.people.includes(output.receipt)) return;
                 const latest = { sourceId: 'story:' + row.message_id, messageId: row.message_id, text: narrative(row.message) };
                 const rows = characters(output, [...pending.records, { id: 'story', text: latest.text }], pending.baseline, latest);
-                const id = 'ks-roster-story-' + pending.token.card + ':' + pending.token.chat + ':' + row.message_id + ':' + hash(matches[0][1]);
+                const id = typeof output.receipt === 'string' ? output.receipt : 'ks-roster-story-' + pending.token.card + ':' + pending.token.chat + ':' + row.message_id + ':' + hash(matches[0][1]);
                 const result = await apply(pending.token, rows, id, pending.baseline);
                 publish({ notice: rows.length ? '本轮人物状态已整理：' + result.statesUpdated + '位' : '本轮没有有来源依据的有效人物数据' });
             } catch (error) { publish({ notice: '本轮人物状态未保存：' + String(error.message || error) }); }
@@ -2480,9 +2510,9 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
  const api=Object.freeze({create,selectors:SELECTORS.slice(),compactFeedback});scope.KsMinimalCopy=api;if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
 
-/* Native Electric Phone 1.3.53 view adapter. Virtual people never enter the
- * official persisted identities, threads or snapshots. Exposed store refs use
- * memory-only projections; closed-over native refs are left untouched.
+/* Native Electric Phone 1.3.53 view adapter. Managed people use persisted
+ * native identities and snapshots so the original phone pages can show them.
+ * Store selectors filter the roster and friends without replacing those pages.
  */
 (function (scope, factory) {
     'use strict';
@@ -3490,7 +3520,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
     if (ownsVue && window.Vue === V) { if (previousVue === undefined) delete window.Vue; else window.Vue = previousVue; }
     if (host[KEY] === api) delete host[KEY];
   }
-  const api = { version: '0.5.1', openLibrary, openSizeSettings, openManualStatus, openManager, closeLayer, roster: rosterService, nativeRoster: nativeRosterAdapter, modules: moduleUpdates, diagnostics: () => ({ ...suite.diagnostics(), version:'0.5.1', roster: rosterService.progress(), people: rosterService.people().length, moduleUpdate: moduleUpdates.progress() }), refresh: queueSync, destroy };
+  const api = { version: '0.5.2', openLibrary, openSizeSettings, openManualStatus, openManager, closeLayer, roster: rosterService, nativeRoster: nativeRosterAdapter, modules: moduleUpdates, diagnostics: () => ({ ...suite.diagnostics(), version:'0.5.2', roster: rosterService.progress(), people: rosterService.people().length, moduleUpdate: moduleUpdates.progress() }), refresh: queueSync, destroy };
   host[KEY] = api;
   listen(window, 'pagehide', destroy); listen(window, 'unload', destroy);
   sync();
