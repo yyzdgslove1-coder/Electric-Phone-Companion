@@ -434,11 +434,11 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
         return [...new Set(value)];
     }
 
-    function excluded(snapshot, name) {
+    function excluded(snapshot, name, explicitPerson = false) {
         const identity = key(name);
         const cardNames = [snapshot.cardName, stripPrefixes(snapshot.cardName)].filter(Boolean).map(key);
-        return !identity || ['assistant', 'user', ...snapshot.userNames.map(key), ...cardNames].includes(identity)
-            || (cardNames.length > 0 && cardNames.includes(key(stripPrefixes(name))));
+        return !identity || ['assistant', 'user', ...snapshot.userNames.map(key)].includes(identity)
+            || (!explicitPerson && cardNames.includes(key(stripPrefixes(name))));
     }
 
     function aliases(snapshot, values, name) {
@@ -530,7 +530,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
             ids.add(person.id);
             highestId = Math.max(highestId, serial);
             person.name = text(person.name, 'name');
-            if (excluded(snapshot, person.name)) throw new RangeError('A placeholder or card title is not a person');
+            if (excluded(snapshot, person.name,person.entityType==='person')) throw new RangeError('A placeholder or unclassified card title is not a person');
             person.aliases = aliases(snapshot, person.aliases, person.name);
             if (!isObject(person.profile) || typeof person.trackStatus !== 'boolean') throw new TypeError('Invalid person data');
             person.manualFields = exactStrings(person.manualFields, 'manualFields');
@@ -578,12 +578,13 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
 
     function patchPerson(snapshot, person, patch, source) {
         const manual = source === 'manual';
+        if(manual||patch.entityType==='person')person.entityType='person';
         const locked = field => !manual && person.manualFields.includes(field);
         const lock = field => { if (manual && !person.manualFields.includes(field)) person.manualFields.push(field); };
         const previousName = person.name;
         if (own(patch, 'name')) {
             const name = text(patch.name, 'name');
-            if (excluded(snapshot, name)) throw new RangeError('A placeholder or card title is not a person');
+            if (excluded(snapshot, name,person.entityType==='person')) throw new RangeError('A placeholder or unclassified card title is not a person');
             if (!locked('name')) { person.name = name; lock('name'); }
         }
         if (own(patch, 'aliases')) {
@@ -617,14 +618,14 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
         if (settings.generationId && ledger.includes(settings.generationId)) return snapshot;
         for (const entry of input) {
             if (!isObject(entry)) throw new TypeError('Each person must be an object');
-            if (own(entry, 'name') && excluded(snapshot, text(entry.name, 'name'))) continue;
+            if (own(entry, 'name') && excluded(snapshot, text(entry.name, 'name'),settings.source==='manual'||entry.entityType==='person'||snapshot.people.some(person=>key(person.name)===key(entry.name)&&person.entityType==='person'))) continue;
             let person = find(snapshot, entry);
             if (!person) {
                 if (!own(entry, 'name')) throw new TypeError('New people require a name');
                 if (snapshot.nextPersonId >= Number.MAX_SAFE_INTEGER) throw new RangeError('Person ID range exhausted');
                 person = {
                     id: idPrefix(snapshot.cardId) + snapshot.nextPersonId++,
-                    name: text(entry.name, 'name'), aliases: [], profile: {}, manualFields: [], trackStatus: true,
+                    name: text(entry.name, 'name'),entityType:'person', aliases: [], profile: {}, manualFields: [], trackStatus: true,
                 };
                 snapshot.people.push(person);
             }
@@ -1101,8 +1102,8 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
         // Some saved phone deltas contain +0.5 as a numeric value. Preserve all quoted text.
         return JSON.parse(raw.replace(/"(?:\\.|[^"\\])*"|((?::|\[|,)\s*)\+(?=\d)/g,(match,prefix)=>prefix===undefined?match:prefix));
     }
-    const schema = '{"characters":[{"name":"明确人物名","aliases":["明确别名"],"profile":{"persona":"已知人设","relationship":"已知关系","avatar":"已知头像URL或空"},"sourceIds":["来源id"],"status":{"affection":{"value":null,"delta":null,"reason":"依据"},"desire":{"value":null,"delta":null,"reason":"依据"},"mood":["情绪"],"thought":"隐秘心声","body":[{"name":"部位","text":"依据剧情的状态"}]}}]}';
-    const instructions = '仅从角色卡、启用世界书、名册及正文整理有依据的既有人物，不编造新人。卡名（含去掉[cod]等前缀后的标题）、Assistant、User及用户名不是人物。同一人的本名和别名合并，保留人工固定资料。人物资料可以取自卡和书；名册内所有人物都要返回当前状态，不因未在本轮正文出场而省略。好感以cardAffections及当前基线为准，不重复结算旧事件。未出场人物沿用已知情况，结合人设与当前剧情给出可推断的状态，不虚构其参与正文事件。identityContext旧文用于确认人物和既有情况。状态用当前人工修订基线，未知数字为null，不用0冒充；无依据字段省略，空值不是清空指令。代词指代时返回已知personId；引用正文时填写statusSourceId及逐字evidenceQuote，不伪造引用。sourceIds只引用sources的id，已知人物可用baseline。格式：' + schema + '。每个已有角色可增加personId，状态附statusSourceId和evidenceQuote。';
+    const schema = '{"characters":[{"entityType":"person","name":"明确人物名","aliases":["明确别名"],"profile":{"persona":"已知人设","relationship":"已知关系","avatar":"已知头像URL或空"},"sourceIds":["来源id"],"status":{"affection":{"value":null,"delta":null,"reason":"依据"},"desire":{"value":null,"delta":null,"reason":"依据"},"mood":["情绪"],"thought":"隐秘心声","body":[{"name":"部位","text":"依据剧情的状态"}]}}]}';
+    const instructions = '仅从角色卡、启用世界书、名册及正文整理有依据的既有人物，不编造新人。场景、组织及欢迎语式的卡标题不能当人物；真实人物本名即使与卡名相同也应返回，并标记entityType为person。Assistant、User及用户名不是人物。同一人的本名和别名合并，保留人工固定资料。人物资料可以取自卡和书；名册内所有人物都要返回当前状态，不因未在本轮正文出场而省略。好感以cardAffections及当前基线为准，不重复结算旧事件。未出场人物沿用已知情况，结合人设与当前剧情给出可推断的状态，不虚构其参与正文事件。identityContext旧文用于确认人物和既有情况。状态用当前人工修订基线，未知数字为null，不用0冒充；无依据字段省略，空值不是清空指令。代词指代时返回已知personId；引用正文时填写statusSourceId及逐字evidenceQuote，不伪造引用。sourceIds只引用sources的id，已知人物可用baseline。格式：' + schema + '。每个已有角色可增加personId，状态附statusSourceId和evidenceQuote。';
 
     function hasStatusData(value) {
         if (!object(value)) return false;
@@ -1206,10 +1207,10 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
                 result=batchResult(result,rows,targets,record.modules);
                 record.appliedRows=rows;
             }else{
-                const rows=parsed.characters.map(row=>({...row,aliases:row.aliases||[],profile:row.profile||{}}));
-                result=await apply(token,rows,id,baseline);
-                result.notice='已保存 '+rows.length+' 位人物';
-                record.appliedRows=rows;
+                const rows=parsed.characters.map(row=>({...row,entityType:'person',aliases:row.aliases||[],profile:row.profile||{}}));
+                result=await apply(token,rows,id,baseline,undefined,'manual');
+                result.notice=result.peopleSaved?'已保存 '+result.peopleSaved+' 位人物':'没有保存人物：名称属于用户或系统占位';
+                const saved=snapshot();record.appliedRows=rows.filter(row=>personIn(saved,row));
             }
             record.raw=raw; record.editedAt=new Date().toISOString(); record.notice=result.notice; record.results=result.results||[];
             if(record.writebackId!=null){
@@ -1323,10 +1324,11 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
             if (matches.length > 1) throw Error('人物名字或别名存在歧义，请先编辑名册');
             return matches[0] || null;
         }
-        function validName(value, name) {
+        function validName(value, name,entityType) {
             if ((value.deletedPeople || []).some(row => [row.name, ...row.aliases].some(alias => key(alias) === key(name)))) return false;
             const empty = D.create(value.cardId, { cardName: value.cardName, userNames: value.userNames });
-            return D.upsertPeople(empty, [{ name }]).people.length === 1;
+            const explicit=entityType==='person'||value.people.some(person=>person.entityType==='person'&&[person.name,...person.aliases].some(alias=>key(alias)===key(name)));
+            return D.upsertPeople(empty, [{ name,...(explicit?{entityType:'person'}:{}) }]).people.length === 1;
         }
         function nativePeople(p) {
             return Object.entries(p.state?.identities || {}).filter(([, row]) => row && !['auto_single_card', 'local_group', 'temporary'].includes(row.source));
@@ -1451,8 +1453,8 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
                 for (const message of assistantRows()) for (const match of String(message.message || '').matchAll(TAG)) {
                     const saved = parse(match[1]);
                     if (!saved.receipt || value.appliedGenerations.people.includes(saved.receipt)) continue;
-                    const rows = saved.characters.filter(row => validName(value, row.name));
-                    value = D.upsertPeople(value, rows.map(row => ({ name: row.name, aliases: row.aliases, profile: row.profile,
+                    const rows = saved.characters.filter(row => validName(value, row.name,row.entityType));
+                    value = D.upsertPeople(value, rows.map(row => ({ name: row.name, aliases: row.aliases, profile: row.profile,...(row.entityType==='person'?{entityType:'person'}:{}),
                         ...(row.personId ? { id: row.personId } : {}) })), { generationId: saved.receipt });
                     const updates = [];
                     for (const row of rows) {
@@ -1461,6 +1463,16 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
                             updates.push({ personId: person.id, payload: row.status });
                     }
                     value = D.applyStatuses(value, updates, { generationId: saved.receipt });
+                }
+                const edited=data.lastAiReplies?.[token.card]?.[token.chat];
+                if(edited?.editedAt&&!edited.modules){
+                    const missing=(edited.appliedRows||[]).filter(row=>!personIn(value,row)&&validName(value,row.name,'person'));
+                    if(missing.length){
+                        value=D.upsertPeople(value,missing.map(row=>({...row,entityType:'person'})),{source:'manual',generationId:'edited-recovery:'+edited.id+':'+edited.editedAt});
+                        const updates=missing.filter(row=>object(row.status)).map(row=>({personId:personIn(value,row).id,payload:row.status}));
+                        if(updates.length)value=D.applyStatuses(value,updates,{source:'manual'});
+                        edited.notice='已保存 '+new Set((edited.appliedRows||[]).map(row=>personIn(value,row)?.id).filter(Boolean)).size+' 位人物';
+                    }
                 }
                 const baselines = baselineMap(data, token);
                 const natives = new Map(nativePeople(token.p).filter(([, row]) => validName(value, String(row.name || '')))
@@ -1471,8 +1483,8 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
                 for (const [nativeId, identity] of natives) {
                     const managed = nativeId.startsWith('ks-roster-view:');
                     const fields = nativeFields(identity);
-                    const candidate = { name: fields.name, aliases: fields.nameAliases, profile: {} };
-                    if (!validName(value, candidate.name)) continue;
+                    const candidate = { name: fields.name, aliases: fields.nameAliases, profile: {},entityType:'person' };
+                    if (!validName(value, candidate.name,'person')) continue;
                     const boundId = Object.keys(bindings).find(id => bindings[id] === nativeId);
                     if (boundId) candidate.id = boundId;
                     candidate.profile = { persona: fields.npcProfile || fields.about, relationship: fields.relationshipToUser, avatar: fields.avatar,
@@ -1542,7 +1554,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
             const token = current();
             const result = await mutate(token, value => {
                 value.deletedPeople = (value.deletedPeople || []).filter(row => ![row.name, ...row.aliases].some(name => key(name) === key(patch.name)));
-                if (!object(patch) || typeof patch.name !== 'string' || !validName(value, patch.name)) throw Error('卡名、用户名或占位名称不能加入人物名册');
+                if (!object(patch) || typeof patch.name !== 'string' || !validName(value, patch.name,'person')) throw Error('用户名或系统占位名称不能加入人物名册');
                 const count = value.people.length;
                 const next = D.upsertPeople(value, [patch], { source: 'manual' });
                 const person = personIn(next, patch);
@@ -1674,7 +1686,8 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
                     || (row.profile !== undefined && !object(row.profile)) || (row.status !== undefined && row.status !== null && !object(row.status))) throw Error('人物或状态字段格式不正确，本次未保存');
                 const aliases = row.aliases || [];
                 if (aliases.some(value => typeof value !== 'string')) throw Error('人物别名必须是文字');
-                if (!validName(baseline, row.name)) continue;
+                if (row.entityType&&row.entityType!=='person')continue;
+                if (!validName(baseline, row.name,row.entityType)) continue;
                 if (row.personId !== undefined && typeof row.personId !== 'string') throw Error('人物ID格式不正确');
                 const known = (row.personId ? personIn(baseline, { personId: row.personId }) : null) || personIn(baseline, { name: row.name, aliases });
                 const refs = Array.isArray(row.sourceIds) ? [...new Set(row.sourceIds.filter(id => typeof id === 'string' && allowed.has(id) && (id !== 'baseline' || known)))] : [];
@@ -1706,16 +1719,16 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
                 const validStatus = object(row.status) && (namedInLatest || citedLatest || (allTargets && known && !quote));
                 const status = validStatus ? clone(row.status) : null, cardValue = known && cardValues.find(value => value.personId === known.id);
                 if (status && cardValue) status.affection = { ...status.affection, value: cardValue.value };
-                result.push({ name: row.name, aliases, profile, sourceIds: refs, ...(known ? { personId: known.id } : {}), ...(status ? { status, statusSourceId: latest?.sourceId, ...(quote ? { evidenceQuote: quote } : {}) } : {}) });
+                result.push({ name: row.name, aliases, profile, sourceIds: refs,...(row.entityType==='person'?{entityType:'person'}:{}), ...(known ? { personId: known.id } : {}), ...(status ? { status, statusSourceId: latest?.sourceId, ...(quote ? { evidenceQuote: quote } : {}) } : {}) });
             }
             return result;
         }
-        async function apply(token, rows, generationId, baseline, job) {
+        async function apply(token, rows, generationId, baseline, job,source='ai') {
             return mutate(token, value => {
                 if (value.appliedGenerations.people.includes(generationId)) return { snapshot: value, result: { peopleAdded: 0, statesUpdated: 0, duplicate: true } };
                 const count = value.people.length;
                 const before = value;
-                value = D.upsertPeople(value, rows.map(row => ({ name: row.name, aliases: row.aliases, profile: row.profile, ...(row.personId ? { id: row.personId } : {}) })), { generationId });
+                value = D.upsertPeople(value, rows.map(row => ({ name: row.name, aliases: row.aliases, profile: row.profile,...(row.entityType==='person'?{entityType:'person'}:{}), ...(row.personId ? { id: row.personId } : {}) })), { generationId,source });
                 const updates = [], seen = new Set();
                 for (const row of rows) {
                     const person = personIn(value, row);
@@ -1727,9 +1740,10 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
                     updates.push({ personId: person.id, payload: row.status });
                 }
                 const previousStates = value.states;
-                value = D.applyStatuses(value, updates, { generationId });
+                value = D.applyStatuses(value, updates, { generationId,source });
                 const changed = updates.filter(update => JSON.stringify(previousStates[update.personId]) !== JSON.stringify(value.states[update.personId])).length;
-                return { snapshot: value, result: { peopleAdded: value.people.length - count, statesUpdated: changed, duplicate: false } };
+                const peopleSaved=new Set(rows.map(row=>personIn(value,row)?.id).filter(Boolean)).size;
+                return { snapshot: value, result: { peopleAdded: value.people.length - count,peopleSaved, statesUpdated: changed, duplicate: false } };
             }, job);
         }
         function latestMessage() { return clone(helper().getChatMessages(-1)[0] || null); }
@@ -1941,7 +1955,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
                 publish({ stage: 'saving' });
                 const result = await apply(token, rows, id, baseline, job);
                 check(token, job);
-                let written = 'off', notice = peopleOnly ? (rows.length?'已整理 '+rows.length+' 位人物；新增 '+result.peopleAdded+' 位':'本次未识别到有依据的人物') : !rows.length ? '未返回有效人物数据，状态未更新'
+                let written = 'off', notice = peopleOnly ? (result.peopleSaved?'已整理 '+result.peopleSaved+' 位人物；新增 '+result.peopleAdded+' 位':'本次未识别到有依据的人物') : !rows.length ? '未返回有效人物数据，状态未更新'
                     : !returnedStatuses ? '状态未更新：模型返回的状态为空'
                     : !acceptedStatuses ? '状态未更新：未通过最新正文来源校验'
                     : !result.statesUpdated ? '状态没有变化' : '已更新 ' + result.statesUpdated + ' 人状态';
@@ -2094,7 +2108,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
     const inertRows = [], hidden = new Set(), contactHidden = new Set(), entries = new Set();
     const friend = id => (state.snapshot.friends || []).includes(id);
     const safePeople = () => {
-      const names = [state.snapshot.cardName, ...(state.snapshot.userNames || []), 'Assistant', 'User'].map(name => text(name).trim().toLowerCase()).filter(Boolean);
+      const names = [...(state.snapshot.userNames || []), 'Assistant', 'User'].map(name => text(name).trim().toLowerCase()).filter(Boolean);
       return (state.snapshot.people || []).filter(person => person?.id && person.name && !names.includes(text(person.name).trim().toLowerCase()));
     };
     const busy = () => state.saving || !!(state.progress.busy || state.progress.running || state.progress.pending || ['loading', 'generating', 'updating', 'saving', 'reading'].includes(state.progress.phase));
@@ -3296,7 +3310,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
    for(const[view,label]of [['round','上一轮更新'],['fields','AI 回复'],['raw','完整原文']]){if(view!=='round'&&!record)continue;const b=doc.createElement('button');b.type='button';b.dataset.view=view;b.textContent=label;tabs.append(b);}
    main.append(tabs);
    const body=doc.createElement('div');body.className='ks-round-body';main.append(body);
-   if(!report.groups.length){const empty=doc.createElement('p');empty.textContent='本轮没有手机更新';main.append(empty);}
+   if(!report.groups.length){const empty=doc.createElement('p');empty.textContent='本轮没有手机更新';body.append(empty);}
    for(const group of report.groups){const card=doc.createElement('section');card.className='ks-round-person';const heading=doc.createElement('h2');heading.textContent=group.name;card.append(heading);
     for(const item of group.items){const row=doc.createElement('div');row.className='ks-round-module';const label=doc.createElement('h3');label.textContent=item.label;row.append(label);
      for(const detail of item.details.length?item.details:[item.app==='memo'?'无新增':'无变化']){const p=doc.createElement('p');p.textContent=detail;row.append(p);}card.append(row);
@@ -3312,7 +3326,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
    const reset=doc.createElement('button');reset.type='button';reset.textContent='还原 AI 原文';footer.append(save,reset);panel.append(footer);
    function decode(){return parsePhoneJson(raw.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}
    function field(parent,obj,k,path){
-    if(['personId','sourceIds','statusSourceId','evidenceQuote','id'].includes(k))return;
+    if(['personId','sourceIds','statusSourceId','evidenceQuote','id','entityType'].includes(k))return;
     const value=obj[k],label=k==='app_updates'?'更新内容':LABELS[k]||(/^\d+$/.test(k)?String(Number(k)+1):k);
     if(value&&typeof value==='object'){
      const box=doc.createElement('fieldset'),legend=doc.createElement('legend');legend.textContent=label;box.append(legend);parent.append(box);
@@ -3350,7 +3364,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
    save.onclick=async()=>{
     if(view==='raw')raw=region.querySelector('textarea').value;else if(dirty)raw=JSON.stringify(draft,null,2);
     save.disabled=true;status.textContent='正在保存…';
-    try{const result=await saveReply(raw);record.raw=raw;dirty=false;status.textContent='已保存 · '+result.notice;}
+    try{const result=await saveReply(raw);record.raw=raw;dirty=false;status.textContent=result.notice.startsWith('已保存')?result.notice:'已保存 · '+result.notice;}
     catch(error){status.textContent=error.message;}
     finally{save.disabled=false;}
    };
@@ -3912,7 +3926,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
     if (ownsVue && window.Vue === V) { if (previousVue === undefined) delete window.Vue; else window.Vue = previousVue; }
     if (host[KEY] === api) delete host[KEY];
   }
-  const api = { version: '0.6.1', openLibrary, openSizeSettings, openManualStatus, openManager, closeLayer, roster: rosterService, nativeRoster: nativeRosterAdapter, modules: moduleUpdates, diagnostics: () => ({ ...suite.diagnostics(), version:'0.6.1', roster: rosterService.progress(), people: rosterService.people().length, moduleUpdate: moduleUpdates.progress() }), refresh: queueSync, destroy };
+  const api = { version: '0.6.2', openLibrary, openSizeSettings, openManualStatus, openManager, closeLayer, roster: rosterService, nativeRoster: nativeRosterAdapter, modules: moduleUpdates, diagnostics: () => ({ ...suite.diagnostics(), version:'0.6.2', roster: rosterService.progress(), people: rosterService.people().length, moduleUpdate: moduleUpdates.progress() }), refresh: queueSync, destroy };
   host[KEY] = api;
   listen(window, 'pagehide', destroy); listen(window, 'unload', destroy);
   sync();
