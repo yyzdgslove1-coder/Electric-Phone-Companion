@@ -3944,7 +3944,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
  const hash=value=>{let n=2166136261;for(const char of String(value)){n^=char.charCodeAt(0);n=Math.imul(n,16777619);}return(n>>>0).toString(36);};
  const decode=value=>String(value||'').replace(/&#124;/g,'|').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&');
  const encode=value=>String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\|/g,'&#124;');
- const typeMap={text:'text',txt:'text','文本':'text','文字':'text',image:'image',img:'image','图片':'image',sticker:'sticker',emoji:'sticker',emj:'sticker','表情':'sticker','表情包':'sticker',voice:'voice','语音':'voice',transfer:'transfer','转账':'transfer',red_packet:'red_packet','红包':'red_packet'};
+ const typeMap={text:'text',txt:'text','文本':'text','文字':'text',image:'image',img:'image','图片':'image',sticker:'sticker',emoji:'emoji',emj:'sticker','表情':'sticker','表情包':'sticker',voice:'voice','语音':'voice',transfer:'transfer','转账':'transfer',red_packet:'red_packet','红包':'red_packet'};
  function parseForFloor(floorId,text){
   return [...String(text||'').matchAll(/<msg\b[^>]*>([\s\S]*?)<\/msg>/gi)].map((match,ordinal)=>{
    const fields=match[1].split('|'),valid=fields.length>=6;
@@ -3993,7 +3993,8 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
   }
   function resolved(raw){
    const sender=resolveIdentity(raw.sender),receiver=resolveIdentity(raw.receiver);
-   return{...raw,senderId:sender?.id||'name:'+raw.sender,receiverId:receiver?.id||'name:'+raw.receiver,senderName:sender?.nickname||sender?.remark||sender?.name||raw.sender,receiverName:receiver?.nickname||receiver?.remark||receiver?.name||raw.receiver,kind:receiver?.isGroup?'group':sender?.isUser||receiver?.isUser?'direct':'pair'};
+   const sticker=raw.type==='sticker'?(getPhone().settings.stickers.stickers.find(item=>item.url===raw.content||item.name===raw.content||item.url.endsWith('/'+raw.content))):null;
+   return{...raw,...(sticker?{mediaUrl:sticker.url}:{}),senderId:sender?.id||'name:'+raw.sender,receiverId:receiver?.id||'name:'+raw.receiver,senderName:sender?.nickname||sender?.remark||sender?.name||raw.sender,receiverName:receiver?.nickname||receiver?.remark||receiver?.name||raw.receiver,kind:receiver?.isGroup?'group':sender?.isUser||receiver?.isUser?'direct':'pair'};
   }
   function selectedStore(){const token=current();return token&&cacheScope===scopeKey(token)?{token,store:cache}:null;}
   function messagesForFloor(floorId){const state=selectedStore();return state?copy(nested(state.store,'floors',state.token)[String(floorId)]?.messages||[]):[];}
@@ -4032,7 +4033,10 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
    const sender=message.sender==='user'?resolveIdentity('user'):resolveIdentity(message.payload?.actorKey||thread.charKey);
    const receiver=group?owner:message.sender==='user'?owner:resolveIdentity('user');
    if(!sender||!receiver)return null;
-   return{id:'native:'+thread.charKey+':'+message.id,nativeMessageId:message.id,nativeThreadId:thread.charKey,source:'native',valid:true,senderId:sender.id,receiverId:receiver.id,sender:sender.id,receiver:receiver.id,senderName:sender.nickname||sender.remark||sender.name,receiverName:receiver.nickname||receiver.remark||receiver.name,kind:group?'group':'direct',type:message.type||'text',content:message.content||message.payload?.url||'',...storyTime(message)};
+   const sticker=message.type==='emoji'&&message.payload?.emojiType==='sticker';
+   const type=sticker?'sticker':message.type==='emoji'?'text':message.type||'text';
+   const content=sticker?message.payload.url:message.type==='image'?(message.payload?.url||message.payload?.images?.[0]?.url||message.content):message.content||message.payload?.url||'';
+   return{id:'native:'+thread.charKey+':'+message.id,nativeMessageId:message.id,nativeThreadId:thread.charKey,source:'native',valid:true,senderId:sender.id,receiverId:receiver.id,sender:sender.id,receiver:receiver.id,senderName:sender.nickname||sender.remark||sender.name,receiverName:receiver.nickname||receiver.remark||receiver.name,kind:group?'group':'direct',type,content,...storyTime(message)};
   }
   async function replaceNativeFloor(token,floorId,messages){
    const p=token.p,prefix='ks-inline:'+token.card+':'+token.chat+':'+floorId+':';
@@ -4050,7 +4054,8 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
     let thread=Object.values(p.state.threads||{}).find(thread=>thread.charKey===nativeId);
     if(!thread){const page=p.currentPage,selected=p.state.activeCharKey;p.startConversation(nativeId);thread=Object.values(p.state.threads||{}).find(thread=>thread.charKey===nativeId);p.currentPage=page;p.state.activeCharKey=selected;}
     if(!thread)continue;
-    const nativeMessage={id:prefix+record.ordinal,clientId:'',sender:sender.isUser?'user':'char',type:record.type,content:record.content,createdAt:[record.date,record.time].filter(Boolean).join(' '),status:'sent',payload:{ksInlineMessage:true,inlineFloorId:Number(floorId),inlineOrdinal:record.ordinal,storyCreatedAt:[record.date,record.time].filter(Boolean).join(' '),...(target.isGroup?{actorKey:sender.nativeId}:{}),...(['image','sticker'].includes(record.type)?{url:record.content}:{})},quotedMessageId:'',favorite:false,withdrawn:false,editedAt:'',error:''};
+    const nativeType=({sticker:'emoji',imgdesc:'text',file:'text'})[record.type]||record.type;
+    const nativeMessage={id:prefix+record.ordinal,clientId:'',sender:sender.isUser?'user':'char',type:nativeType,content:record.content,createdAt:[record.date,record.time].filter(Boolean).join(' '),status:'sent',payload:{ksInlineMessage:true,inlineFloorId:Number(floorId),inlineOrdinal:record.ordinal,storyCreatedAt:[record.date,record.time].filter(Boolean).join(' '),...(target.isGroup?{actorKey:sender.nativeId}:{}),...(record.type==='sticker'?{emojiType:'sticker',name:record.content,url:record.mediaUrl||record.content}:record.type==='image'?{url:record.content}:record.type==='emoji'?{emoji:record.content}:{})},quotedMessageId:'',favorite:false,withdrawn:false,editedAt:'',error:''};
     thread.messages.push(nativeMessage);thread.hidden=false;thread.updatedAt=nativeMessage.createdAt;changed=true;
    }
    if(changed)p.saveChat();
@@ -4195,7 +4200,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
    return box;
   }
   function content(node,message){
-   if(['image','sticker'].includes(message.type)){const image=el('img');image.src=message.content;image.alt=message.type==='sticker'?'表情':'图片';image.loading='lazy';node.append(image);}
+   if(['image','sticker'].includes(message.type)&&/^(?:https?:\/\/|\/user\/files\/|data:image\/)/i.test(message.mediaUrl||message.content)){const image=el('img');image.src=message.mediaUrl||message.content;image.alt=message.type==='sticker'?'表情':'图片';image.loading='lazy';node.append(image);}
    else node.textContent=message.content;
   }
   function bubble(message,person,right){
