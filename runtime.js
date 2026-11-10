@@ -4150,11 +4150,7 @@ window.KsCompanionDefaultStickers=[{"name":"小猫撒花","url":"https://files.c
     const target=row=>/^(?:恰个联系|轻量气泡(?:[（(].*?[）)])?|表情包|核心规则)$/.test(String(row.name||row.comment||'').trim());
     if(entries.some(row=>target(row)&&row.enabled!==false)){await h.updateWorldbookWith(name,rows=>rows.map(row=>target(row)?{...row,enabled:false}:row));changedBooks.push(name);}
    }
-   let regexCount=0;
-   await h.updateTavernRegexesWith(rows=>rows.map(row=>{
-    if(/轻量|微信/.test(row.script_name||row.name||'')&&/\b(?:TXT|Text|EMJ|emoji|XT)\b/.test(row.find_regex||'')&&!/<msg\b/i.test(row.find_regex||'')&&row.enabled!==false){regexCount++;return{...row,enabled:false};}return row;
-   }),{scope:'global'});
-   return{books:changedBooks,regexCount};
+   return{books:changedBooks,regexCount:0,legacyDisplayPreserved:true};
   }
   async function install(){
    if(installed)return;installed=true;
