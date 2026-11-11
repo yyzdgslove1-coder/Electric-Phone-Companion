@@ -3,25 +3,86 @@
 #ks-electric-companion-settings .ks-companion-actions{display:flex!important;flex-wrap:wrap!important;gap:8px!important;width:100%!important;min-width:0!important}
 #ks-electric-companion-settings .ks-companion-actions>button.menu_button{box-sizing:border-box!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;flex:1 1 11rem!important;width:auto!important;min-width:max-content!important;max-width:100%!important;min-height:42px!important;padding:9px 14px!important;white-space:nowrap!important;word-break:keep-all!important;writing-mode:horizontal-tb!important;background:#252525!important;color:#eee!important;border:1px solid #666!important;border-radius:5px!important;font:14px/1.5 system-ui,sans-serif!important}
 
-/* Share the composer row used by existing Quick Reply and helper buttons. */
-#send_form #qr--bar:has(> [data-ks-phone-entry]) {
+/* Keep the phone next to BBS; let the other controls wrap with the composer. */
+#send_form #qr--bar:has([data-ks-phone-entry]) {
     display: flex;
     align-items: center;
-    flex-wrap: nowrap;
-    justify-content: safe center;
+    flex-wrap: wrap;
+    justify-content: center;
     min-width: 0;
     max-width: 100%;
-    gap: 5px;
-    overflow-x: auto;
+    gap: 4px 5px;
 }
-#send_form #qr--bar:has(> [data-ks-phone-entry]) > * {
-    flex: 0 0 auto;
-    white-space: nowrap;
-}
-#send_form #qr--bar:has(> [data-ks-phone-entry]) > .qr--buttons {
+#send_form #qr--bar:has([data-ks-phone-entry]) > .qr--buttons {
     width: auto;
+    max-width: 100%;
+    flex-wrap: wrap;
+}
+#send_form #qr--bar .qr--buttons:has(> #bbs-qr-button + [data-ks-phone-entry]) {
     flex-wrap: nowrap;
 }
-#send_form:has(#qr--bar > [data-ks-phone-entry]) .qr--button[title="打开电波手机"] {
+#send_form #qr--bar :is([data-ks-phone-entry], [data-ks-round-updates], [data-ks-composer-more] > summary) {
+    box-sizing: border-box;
+    min-height: 22px;
+    height: auto;
+    margin: 0;
+    padding: 3px 5px;
+    line-height: 14px;
+    white-space: nowrap;
+}
+#send_form:has(#qr--bar [data-ks-phone-entry]) .qr--button[title="打开电波手机"] {
     display: none !important;
+}
+
+#send_form #qr--bar:has(> [data-ks-composer-more]) {
+    justify-content: flex-start;
+    overflow: visible;
+}
+#send_form #qr--bar:has(> [data-ks-composer-more]) [data-ks-folded-tool],
+#send_form #qr--bar:has(> [data-ks-composer-more]) > [id^="script_container_"]:has([data-ks-folded-tool]):not(:has(.menu_button:not([data-ks-folded-tool]))) {
+    display: none !important;
+}
+#send_form [data-ks-composer-more] {
+    position: relative;
+    margin-left: auto;
+}
+#send_form [data-ks-composer-more] > summary {
+    display: block;
+    cursor: pointer;
+    list-style: none;
+}
+#send_form [data-ks-composer-more] > summary::-webkit-details-marker { display: none; }
+#send_form [data-ks-composer-more]:not([open]) > .ks-composer-more-panel { display: none; }
+#send_form .ks-composer-more-panel {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 7px);
+    z-index: 12;
+    width: max-content;
+    min-width: 172px;
+    padding: 4px;
+    border: 1px solid var(--SmartThemeBorderColor, #626262);
+    border-radius: 6px;
+    background: #272727;
+    box-shadow: 0 4px 14px #0007;
+}
+#send_form .ks-composer-more-panel > button {
+    display: block;
+    width: 100%;
+    padding: 6px 8px;
+    border: 0 !important;
+    border-radius: 3px;
+    background: transparent !important;
+    color: #e4e4e4 !important;
+    box-shadow: none !important;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+#send_form .ks-composer-more-panel > button:hover,
+#send_form .ks-composer-more-panel > button:focus-visible { background: #424242 !important; }
+#send_form .ks-composer-more-panel > .ks-composer-more-separator {
+    margin-top: 3px;
+    border-top: 1px solid #505050 !important;
+    border-radius: 0 0 3px 3px;
 }
