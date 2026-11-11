@@ -2,3 +2,26 @@
 #ks-electric-companion-settings>p{font-size:13px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}
 #ks-electric-companion-settings .ks-companion-actions{display:flex!important;flex-wrap:wrap!important;gap:8px!important;width:100%!important;min-width:0!important}
 #ks-electric-companion-settings .ks-companion-actions>button.menu_button{box-sizing:border-box!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;flex:1 1 11rem!important;width:auto!important;min-width:max-content!important;max-width:100%!important;min-height:42px!important;padding:9px 14px!important;white-space:nowrap!important;word-break:keep-all!important;writing-mode:horizontal-tb!important;background:#252525!important;color:#eee!important;border:1px solid #666!important;border-radius:5px!important;font:14px/1.5 system-ui,sans-serif!important}
+
+/* Share the composer row used by existing Quick Reply and helper buttons. */
+#send_form #qr--bar:has(> [data-ks-phone-entry]) {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    justify-content: safe center;
+    min-width: 0;
+    max-width: 100%;
+    gap: 5px;
+    overflow-x: auto;
+}
+#send_form #qr--bar:has(> [data-ks-phone-entry]) > * {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+#send_form #qr--bar:has(> [data-ks-phone-entry]) > .qr--buttons {
+    width: auto;
+    flex-wrap: nowrap;
+}
+#send_form:has(#qr--bar > [data-ks-phone-entry]) .qr--button[title="打开电波手机"] {
+    display: none !important;
+}
